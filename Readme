@@ -1,0 +1,235 @@
+# VTX Recording Control Documentation
+
+## Overview
+
+This setup automatically **starts and stops recording on your waybeam_venc VTX** based on your drone's arm/disarm status. When you arm your drone, recording starts automatically. When you disarm, recording stops.
+
+**Requirements:**
+- Betaflight flight controller with CRSF ELRS receiver
+- OpenIPC VTX running waybeam_venc encoder
+- mSPOSD telemetry router
+- Serial connection from FC to VTX (typically ttyS2 @ 115200 baud)
+
+---
+
+## How It Works
+
+```
+Betaflight FC (CRSF)
+    ↓ (via ttyS2 @ 115200 baud)
+mSPOSD (telemetry router)
+    ↓ (monitors RC channel 5)
+channels.sh (script)
+    ↓ (on arm/disarm)
+waybeam_venc HTTP API
+    ↓
+Recording starts/stops
+```
+
+1. Betaflight sends CRSF data** to the VTX via serial (ttyS2)
+2. mSPOSD receives the telemetry** including RC channel values
+3. mSPOSD monitors channel 5** and calls `channels.sh` when it changes
+4. **channels.sh detects arm/disarm** by PWM threshold:
+   - `PWM < 1200` → Disarm (stop recording)
+   - `PWM > 1800` → Arm (start recording)
+5. **HTTP API commands** are sent to waybeam_venc to control recording
+
+---
+
+## Files
+
+### 1. `/etc/rc.local`
+
+System startup script that launches mSPOSD with channel 5 monitoring enabled.
+this script kills msposd and relaunches it with required parameters.
+can cause some visual glitches when msposd is restarting . 
+
+```bash
+#!/bin/sh
+msposd -m /dev/ttyS2 -b 115200 -c 5 -d -r 20 &
+exit 0
+```
+
+**Parameters explained:**
+- `-m /dev/ttyS2` — Serial port where Betaflight FC is connected
+- `-b 115200` — Baud rate (standard for mSPOSD)
+- `-c 5` — Monitor RC channel 5 (your arm/disarm switch)
+- `-d` — Enable OSD drawing
+- `-r 20` — OSD refresh rate (Hz)
+
+### 2. `/usr/bin/channels.sh`
+
+Shell script called by mSPOSD whenever channel 5 PWM value changes.
+
+```bash
+#!/bin/sh
+
+if [ $1 -eq 5 ];then
+echo "Channel5 change."
+
+	if [ $2 -lt 1200 ];then
+		echo "Disarm detected - Stop Recording"
+		curl "http://192.168.1.10:80/api/v1/record/stop"
+
+	elif [ $2 -gt 1800 ];then
+		echo "ARM detected - Start Recording"
+		curl "http://192.168.1.10:80/api/v1/record/start"
+
+	fi
+fi
+exit 0
+```
+
+**How it works:**
+- Called by mSPOSD with: `channels.sh <channel> <pwm_value>`
+- Example: `channels.sh 5 2000` (channel 5, PWM 2000)
+- If PWM < 1200: sends `record/stop` command
+- If PWM > 1800: sends `record/start` command
+- If 1200 ≤ PWM ≤ 1800: does nothing (middle position)
+
+---
+
+## Installation
+
+### Step 1: Update rc.local
+
+SSH into your VTX:
+
+```bash
+ssh root@192.168.1.10
+```
+
+Edit `/etc/rc.local`:
+
+```bash
+vi /etc/rc.local
+```
+
+Replace the contents with:
+
+```bash
+#!/bin/sh
+msposd -m /dev/ttyS2 -b 115200 -c 5 -d -r 20 &
+exit 0
+```
+
+Save and exit (in vi: `:wq`)
+
+Make it executable:
+
+```bash
+chmod +x /etc/rc.local
+```
+
+### Step 2: Deploy channels.sh
+
+From your ground station or computer:
+
+```bash
+# Copy the script to the VTX
+scp channels.sh root@192.168.1.10:/usr/bin/channels.sh
+
+# Make it executable
+ssh root@192.168.1.10 chmod +x /usr/bin/channels.sh
+```
+
+
+### Step 3: Reboot
+
+
+
+## Testing
+
+### Manual Test
+
+Test the script directly without arming:
+
+```bash
+# Simulate disarm (PWM 1000)
+ssh root@192.168.1.10 /usr/bin/channels.sh 5 1000
+# Should show: "Disarm detected - Stop Recording"
+
+# Simulate arm (PWM 2000)
+ssh root@192.168.1.10 /usr/sbin/channels.sh 5 2000
+# Should show: "ARM detected - Start Recording."
+```
+
+### Real Flight Test
+
+1. ** Visually check that mSPOSD is running:**
+  
+
+2. **Arm your drone**
+   - Channel 5 PWM should exceed 1800
+   - Recording should START automatically
+   - Check VTX recording status:
+
+3. **Disarm your drone**
+   - Channel 5 PWM should drop below 1200
+   - Recording should STOP automatically
+4. Do this multiple time ti creat multiple recordings to confirm .
+
+---
+
+## Verification
+
+you can also check recording status via ssh
+
+
+curl "http://192.168.1.10:80/api/v1/record/status"
+
+
+Response example:
+```json
+{
+  "ok": true,
+  "data": {
+    "active": true,
+    "format": "ts",
+    "path": "/mnt/mmcblk0p1/rec_01h23m45s_abcd.ts",
+    "frames": 1500,
+    "bytes": 12345678,
+    "segments": 1,
+    "stop_reason": "none"
+  }
+}
+```
+
+## Configuration
+
+### VTX IP and Port
+
+Default is `192.168.1.10:80`. If your VTX has a different IP or port, edit `channels.sh`:
+
+```bash
+# Change this line:
+curl "http://192.168.1.10:80/api/v1/record/stop"
+
+# To your actual IP:port
+curl "http://YOUR.VTX.IP:PORT/api/v1/record/stop"
+```
+
+
+
+If your RC switch sends different PWM values, adjust these numbers. Common values:
+- Low position: 1000-1200 PWM
+- Mid position: 1400-1500 PWM
+- High position: 1800-2000 PWM
+
+For recording parameters edit venc.json file in /etc/
+ "record": {
+    "enabled": false,
+    "mode": "dual",
+    "dir": "/mnt/mmcblk0p1",
+    "format": "ts",
+    "maxSeconds": 300,
+    "maxMB": 500,
+    "bitrate": 19000 ,
+    "fps": 60,
+    "gopSize": 0 ,
+    "server": ""
+  },
+
+or follow the official repo documentation .
+
+
