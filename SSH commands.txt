@@ -1,0 +1,5 @@
+#run these commands after movine files 
+
+chmod +x /usr/bin/channels.sh
+
+chmod +x /etc/rc.local
