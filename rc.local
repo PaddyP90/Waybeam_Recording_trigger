@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# rc.local - Clean startup
+
+# Kill any existing msposd instances
+killall msposd
+sleep 1
+
+# Start fresh mSPOSD with channel 5 monitoring
+# -m /dev/ttyS2    : Serial port to Betaflight FC ..change to ttyS3 for emax 200mw vtx
+# -b 115200        : Baud rate
+# -c 5             : Monitor channel 5, call /usr/sbin/channels.sh on change
+# -d               : Enable OSD
+# -r 20            : Refresh rate
+#to start alink idk how to make it start automatically
+
+msposd -m /dev/ttyS2 -b 115200 -c 5 -d -r 20 &
+
+
+alink_drone &
+exit 0
