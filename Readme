@@ -230,6 +230,6 @@ For recording parameters edit venc.json file in /etc/
     "server": ""
   },
 
-or follow the official repo documentation .
+or follow the official Waybeam_venc repository documentation .
 
 
