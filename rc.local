@@ -7,7 +7,7 @@ killall msposd
 sleep 1
 
 # Start fresh mSPOSD with channel 5 monitoring
-# -m /dev/ttyS2    : Serial port to Betaflight FC ..change to ttyS3 for emax 200mw vtx
+# -m /dev/ttyS2    : Serial port to Betaflight FC
 # -b 115200        : Baud rate
 # -c 5             : Monitor channel 5, call /usr/sbin/channels.sh on change
 # -d               : Enable OSD
