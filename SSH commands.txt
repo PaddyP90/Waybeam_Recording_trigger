@@ -1,5 +1,5 @@
 #you can also use winSCP .. connect your drone and 
-#copy "channel.sh" into "/usr/bin "
+#copy "channels.sh" into "/usr/bin "
 #and copy/replace "rc.local" to "/etc/"
 
 #run these commands after movine files 
